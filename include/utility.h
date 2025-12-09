@@ -61,8 +61,8 @@ using namespace std;
 
 typedef pcl::PointXYZI PointType;
 
-enum class SensorType { VELODYNE, OUSTER, LIVOX };
-
+// enum class SensorType { VELODYNE, OUSTER, LIVOX };
+enum class SensorType { VELODYNE, OUSTER, LIVOX, ROBOSENSE };
 class ParamServer
 {
 public:
@@ -190,10 +190,14 @@ public:
         {
             sensor = SensorType::LIVOX;
         }
+        else if (sensorStr == "robosense")
+        {
+            sensor = SensorType::ROBOSENSE;
+        }
         else
         {
             ROS_ERROR_STREAM(
-                "Invalid sensor type (must be either 'velodyne' or 'ouster' or 'livox'): " << sensorStr);
+                "Invalid sensor type (must be either 'velodyne' or 'ouster' or 'livox' or 'robosense'): " << sensorStr);
             ros::shutdown();
         }
 

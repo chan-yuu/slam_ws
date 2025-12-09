@@ -30,6 +30,19 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(OusterPointXYZIRT,
     (uint8_t, ring, ring) (uint16_t, noise, noise) (uint32_t, range, range)
 )
 
+struct RobosensePointXYZIRT {
+    PCL_ADD_POINT4D;
+    float intensity;
+    uint16_t ring;
+    double timestamp; // 速腾使用的是绝对时间戳 (double)
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(RobosensePointXYZIRT,
+    (float, x, x) (float, y, y) (float, z, z) (float, intensity, intensity)
+    (uint16_t, ring, ring) (double, timestamp, timestamp)
+)
+
 // Use the Velodyne point format as a common representation
 using PointXYZIRT = VelodynePointXYZIRT;
 
@@ -68,6 +81,7 @@ private:
 
     pcl::PointCloud<PointXYZIRT>::Ptr laserCloudIn;
     pcl::PointCloud<OusterPointXYZIRT>::Ptr tmpOusterCloudIn;
+    pcl::PointCloud<RobosensePointXYZIRT>::Ptr tmpRobosenseCloudIn;
     pcl::PointCloud<PointType>::Ptr   fullCloud;
     pcl::PointCloud<PointType>::Ptr   extractedCloud;
 
@@ -108,6 +122,7 @@ public:
     {
         laserCloudIn.reset(new pcl::PointCloud<PointXYZIRT>());
         tmpOusterCloudIn.reset(new pcl::PointCloud<OusterPointXYZIRT>());
+        tmpRobosenseCloudIn.reset(new pcl::PointCloud<RobosensePointXYZIRT>());
         fullCloud.reset(new pcl::PointCloud<PointType>());
         extractedCloud.reset(new pcl::PointCloud<PointType>());
 
@@ -226,17 +241,40 @@ public:
                 dst.time = src.t * 1e-9f;
             }
         }
+        else if (sensor == SensorType::ROBOSENSE)
+        {
+            // 1. 转为 PCL 格式
+            pcl::moveFromROSMsg(currentCloudMsg, *tmpRobosenseCloudIn);
+
+            laserCloudIn->points.resize(tmpRobosenseCloudIn->size());
+            laserCloudIn->is_dense = tmpRobosenseCloudIn->is_dense;
+
+            // 2. 获取基准时间 (Header Stamp)
+            double start_time = currentCloudMsg.header.stamp.toSec();
+
+            // 3. 逐点转换
+            for (size_t i = 0; i < tmpRobosenseCloudIn->size(); i++)
+            {
+                auto &src = tmpRobosenseCloudIn->points[i];
+                auto &dst = laserCloudIn->points[i];
+
+                dst.x = src.x;
+                dst.y = src.y;
+                dst.z = src.z;
+                dst.intensity = src.intensity;
+                dst.ring = src.ring;
+
+                // 关键：计算相对时间 (point.timestamp - header.stamp)
+                // LIO-SAM 需要的是相对于这一帧开始的时间偏移量
+                dst.time = src.timestamp - start_time;
+            }
+        }
         else
         {
             ROS_ERROR_STREAM("Unknown sensor type: " << int(sensor));
             ros::shutdown();
         }
-
-        // get timestamp
-        cloudHeader = currentCloudMsg.header;
-        timeScanCur = cloudHeader.stamp.toSec();
-        timeScanEnd = timeScanCur + laserCloudIn->points.back().time;
-
+        
         // check dense flag
         if (laserCloudIn->is_dense == false)
         {
@@ -270,7 +308,7 @@ public:
             deskewFlag = -1;
             for (auto &field : currentCloudMsg.fields)
             {
-                if (field.name == "time" || field.name == "t")
+                if (field.name == "time" || field.name == "t" || field.name == "timestamp")
                 {
                     deskewFlag = 1;
                     break;
