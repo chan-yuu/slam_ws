@@ -1,6 +1,6 @@
 # EKF 节点通常负责发布 odom -> base_link 的变换。
 # 但如果你有 LIO-SAM 或其他 SLAM 算法已经在发布这个 TF，这里必须设为 false，否则 TF 树会打架（闪烁）。
-publish_tf: false
+publish_tf: true
 
 # --- 坐标系定义 ---
 # map_frame: 全局地图坐标系 (通常是 map)
